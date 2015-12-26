@@ -1,0 +1,19 @@
+{
+    "case":"baremetal",
+    "name":"dlca",
+    "module_dir":"scripts",
+    "log_dir":"logs",
+    "log_level":"info",
+    "debug":true,
+    "topics":[{
+        "name":"prod-server",
+        "src":"server.log",
+        "log_level":"debug",
+        "debug":true
+    },{
+        "name":"prod-audit",
+        "src":"audit.log",
+        "log_level":"debug",
+        "debug":true
+    }]
+}
