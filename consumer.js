@@ -12,8 +12,8 @@
 "use strict";
 
 var myArgs = process.argv.slice(2);
-var info = require(myArgs[0]);
 var pathUtil = require("path");
+var info = require(pathUtil.join(__dirname,myArgs[0]));
 var bunyan = require("bunyan");
 var loggerSetting = {
     "name": (info.name?info.name:"consumer"),
@@ -52,14 +52,14 @@ function initTopics(topic, index, array) {
 function run(){
     var module_dir = pathUtil.join(__dirname, info["module_dir"]);
     var moduleList = []
-    require("fs").readdirSync(module_dir).forEach(function(module_script){
+    require("fs").readdirSync(module_dir).forEach(function (module_script){
         if ((!info.exclude_module || info.exclude_module.indexOf(module_script)===-1) && (module_script.indexOf('.js')!=-1)){
             var module = require(pathUtil.join(module_dir,module_script));
-            var module_name = module_script.replace(".js", ""); 
+            module.name = module_script.replace(".js", ""); 
             if (module.debug){
                 var streams = [{
                     "level":(module.log_level?module.log_level:"debug"),
-                    "path":pathUtil.join(info["log_dir"],"module."+module_name+".log")
+                    "path":pathUtil.join(info["log_dir"],"module."+module.name+".log")
                 },{
                     "level":(module.log_level?module.log_level:"debug"),
                     "stream": process.stdout
@@ -67,11 +67,11 @@ function run(){
             } else {
                 var streams = [{
                     "level":(module.log_level?module.log_level:"info"),
-                    "path":pathUtil.join(info["log_dir"],"module."+module_name+".log")
+                    "path":pathUtil.join(info["log_dir"],"module."+module.name+".log")
                 }]
             }
             module.logger = bunyan.createLogger({
-                "name": "module."+module_name,
+                "name": "module."+module.name,
                 "streams": streams
             });
             moduleList.push(module);
@@ -85,12 +85,22 @@ function run(){
         var lineSeparator= "\n";
         var fromBeginning = false;
         var watchOptions = {};
-        info.topics.forEach(function(topic){
-            var consumer = new Tail(pathUtil.join(__dirname,topic.src),lineSeparator,watchOptions,fromBeginning);
-            consumer.topic = topic.name;
-            consumer.incoming = "line";
-            consumer.target = "";
-            consumerList.push(consumer);
+        info.topics.forEach(function (topic){
+            if (topic.src.substring){
+                var consumer = new Tail(pathUtil.join(__dirname,topic.src),lineSeparator,watchOptions,fromBeginning);
+                consumer.topic = topic.name;
+                consumer.incoming = "line";
+                consumer.target = "";
+                consumerList.push(consumer);
+            } else {
+                topic.src.forEach(function (src){
+                    var consumer = new Tail(pathUtil.join(__dirname,src),lineSeparator,watchOptions,fromBeginning);
+                    consumer.topic = topic.name;
+                    consumer.incoming = "line";
+                    consumer.target = "";
+                    consumerList.push(consumer);
+                });
+            }
         });
     } else if (info["case"]==="kafka"){
         var kafka = require("kafka-node");
@@ -109,17 +119,25 @@ function run(){
     }
     var topicArray = info["topics"];
     topicArray.forEach(initTopics);
-    consumerList.forEach(function(consumer){
-        var current_topic = (consumer.topic?consumer.topic:"")
-        consumer.on(consumer.incoming, function(message){
-            current_topic = (current_topic ? current_topic : message.topic)
+    consumerList.forEach(function (consumer){
+        consumer.on(consumer.incoming, function (message){
+            var current_topic = (consumer.topic ? consumer.topic : message.topic)
             var message_target=(consumer.target ? JSON.parse(message[consumer.target]) : JSON.parse(message))
-            moduleList.forEach(function(module){
+            moduleList.forEach(function (module){
                 if(module.trigger(message_target)){
-                    module.run(message_target,info,module.logger);
+                    logger.debug({message:message_target}, module.name+" is triggered by message");
+                    module.run(message_target,info,module.logger).then(function (response){
+                        logger.debug({message:message_target}, module.name+" successfully processed message");
+                    },function (err){
+                        if (err.input && err.message){
+                            logger.error({message:err.input,error:err.message}, module.name+" encountered error");
+                        } else {
+                            logger.error({message:message_target,error:err.message}, module.name+" encountered error");
+                        }
+                    });
                 }
             });
-            topicLoggers[current_topic].debug(message_target);
+            topicLoggers[current_topic].debug({message:message_target},"Pulled new message from "+current_topic);
         });
         consumer.on("error", function (err) {
             logger.error(err);
