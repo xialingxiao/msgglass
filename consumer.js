@@ -33,7 +33,7 @@ var topicLoggers = {};
 
 function initTopics(topic, index, array) {
     var loggerSetting = {
-        "name": "topic."+topic.name,
+        "name": topic.name,
         "streams":[{
             "level": (topic.level?topic.level:"info"),
             "path": pathUtil.join(info["log_dir"],"topic."+topic.name+".log")
@@ -55,7 +55,9 @@ function run(){
     require("fs").readdirSync(module_dir).forEach(function (module_script){
         if ((!info.exclude_module || info.exclude_module.indexOf(module_script)===-1) && (module_script.indexOf('.js')!=-1)){
             var module = require(pathUtil.join(module_dir,module_script));
-            module.name = module_script.replace(".js", ""); 
+            if (!module.name || !module.name.substring){
+                module.name = module_script.replace(".js", ""); 
+            }
             if (module.debug){
                 var streams = [{
                     "level":(module.log_level?module.log_level:"debug"),
@@ -71,7 +73,7 @@ function run(){
                 }]
             }
             module.logger = bunyan.createLogger({
-                "name": "module."+module.name,
+                "name": module.name,
                 "streams": streams
             });
             moduleList.push(module);
@@ -105,7 +107,7 @@ function run(){
     } else if (info["case"]==="kafka"){
         var kafka = require("kafka-node");
         var HighLevelConsumer = kafka.HighLevelConsumer;
-        var clientId = "promo_code_handler_"+JSON.stringify(Math.floor(Math.random()*10001))
+        var clientId = "msgglass_handler_"+JSON.stringify(Math.floor(Math.random()*10001))
         var Client = kafka.Client;
         var client = new Client(info["zookeepers"],clientId);
         var options = info["options"];
@@ -125,19 +127,19 @@ function run(){
             var message_target=(consumer.target ? JSON.parse(message[consumer.target]) : JSON.parse(message))
             moduleList.forEach(function (module){
                 if(module.trigger(message_target)){
-                    logger.debug({message:message_target}, module.name+" is triggered by message");
+                    logger.debug({message:message_target}, module.name.toUpperCase()+" is triggered by message");
                     module.run(message_target,info,module.logger).then(function (response){
-                        logger.debug({message:message_target}, module.name+" successfully processed message");
+                        logger.debug({message:message_target}, module.name.toUpperCase()+" successfully processed message");
                     },function (err){
                         if (err.input && err.message){
-                            logger.error({message:err.input,error:err.message}, module.name+" encountered error");
+                            logger.error({message:err.input,error:err.message}, module.name.toUpperCase()+" encountered error");
                         } else {
-                            logger.error({message:message_target,error:err.message}, module.name+" encountered error");
+                            logger.error({message:message_target,error:err.message}, module.name.toUpperCase()+" encountered error");
                         }
                     });
                 }
             });
-            topicLoggers[current_topic].debug({message:message_target},"Pulled new message from "+current_topic);
+            topicLoggers[current_topic].debug({message:message_target},"Pulled new message from "+current_topic.toUpperCase());
         });
         consumer.on("error", function (err) {
             logger.error(err);

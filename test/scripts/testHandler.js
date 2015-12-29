@@ -21,6 +21,7 @@ ModuleError.prototype = Object.create(Error.prototype);
 ModuleError.prototype.constructor = ModuleError;
 
 module.exports = {
+    name: "test handler",
     trigger: function(message){
         if (message.msg==="Target message"){
             return true;
